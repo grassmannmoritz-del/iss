@@ -8,9 +8,10 @@
   <meta name="apple-mobile-web-app-title" content="iss">
   <title>iss tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syne:wght@300;400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
       --bg: #030508;
       --surface: rgba(255,255,255,0.03);
@@ -18,19 +19,16 @@
       --text: #e8edf5;
       --muted: rgba(232,237,245,0.35);
       --accent: #4fc3f7;
-      --accent-dim: rgba(79,195,247,0.15);
       --green: #69f0ae;
     }
-
     html, body {
       height: 100%;
       background: var(--bg);
       color: var(--text);
       font-family: 'Syne', sans-serif;
-      overflow: hidden;
+      overflow-y: auto;
+      overflow-x: hidden;
     }
-
-    /* Starfield */
     body::before {
       content: '';
       position: fixed;
@@ -43,28 +41,18 @@
         radial-gradient(1px 1px at 85% 35%, rgba(255,255,255,0.6) 0%, transparent 100%),
         radial-gradient(1px 1px at 15% 85%, rgba(255,255,255,0.4) 0%, transparent 100%),
         radial-gradient(1px 1px at 60% 45%, rgba(255,255,255,0.3) 0%, transparent 100%),
-        radial-gradient(1px 1px at 90% 65%, rgba(255,255,255,0.5) 0%, transparent 100%),
-        radial-gradient(1px 1px at 25% 40%, rgba(255,255,255,0.4) 0%, transparent 100%),
-        radial-gradient(1px 1px at 75% 15%, rgba(255,255,255,0.6) 0%, transparent 100%),
-        radial-gradient(1px 1px at 40% 75%, rgba(255,255,255,0.3) 0%, transparent 100%),
-        radial-gradient(1px 1px at 55% 90%, rgba(255,255,255,0.5) 0%, transparent 100%),
-        radial-gradient(1px 1px at 5% 50%, rgba(255,255,255,0.4) 0%, transparent 100%),
-        radial-gradient(1px 1px at 95% 25%, rgba(255,255,255,0.3) 0%, transparent 100%),
-        radial-gradient(1px 1px at 45% 30%, rgba(255,255,255,0.6) 0%, transparent 100%);
+        radial-gradient(1px 1px at 90% 65%, rgba(255,255,255,0.5) 0%, transparent 100%);
       pointer-events: none;
       z-index: 0;
     }
-
     body {
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      min-height: 100dvh;
-      padding: env(safe-area-inset-top, 20px) 24px env(safe-area-inset-bottom, 20px);
+      padding: max(env(safe-area-inset-top), 20px) 24px max(env(safe-area-inset-bottom), 20px);
       position: relative;
+      gap: 16px;
     }
-
     .wrapper {
       position: relative;
       z-index: 1;
@@ -74,15 +62,12 @@
       flex-direction: column;
       gap: 16px;
     }
-
-    /* Header */
     .header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 0 4px;
     }
-
     .title {
       font-family: 'Share Tech Mono', monospace;
       font-size: 11px;
@@ -90,7 +75,6 @@
       text-transform: uppercase;
       color: var(--accent);
     }
-
     .live-badge {
       display: flex;
       align-items: center;
@@ -100,67 +84,60 @@
       letter-spacing: 0.2em;
       color: var(--green);
     }
-
     .live-dot {
-      width: 6px;
-      height: 6px;
+      width: 6px; height: 6px;
       border-radius: 50%;
       background: var(--green);
       animation: livepulse 1s ease-in-out infinite;
     }
-
     @keyframes livepulse {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.4; transform: scale(0.8); }
     }
-
-    /* ISS Icon card */
-    .iss-card {
+    .map-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 20px;
-      padding: 32px 24px;
-      text-align: center;
-      position: relative;
       overflow: hidden;
+      position: relative;
     }
-
-    .iss-card::before {
+    .map-card::before {
       content: '';
       position: absolute;
       top: 0; left: 0; right: 0;
       height: 1px;
       background: linear-gradient(90deg, transparent, var(--accent), transparent);
       opacity: 0.4;
+      z-index: 999;
     }
-
-    .iss-icon {
-      font-size: 48px;
+    #map {
+      height: 220px;
+      width: 100%;
+    }
+    .leaflet-tile-pane { filter: brightness(0.45) saturate(0.2) hue-rotate(200deg); }
+    .leaflet-container { background: #030508; }
+    .leaflet-control-zoom, .leaflet-control-attribution { display: none; }
+    .ufo-marker {
+      font-size: 18px;
+      line-height: 1;
+      filter: drop-shadow(0 0 6px rgba(79,195,247,1)) drop-shadow(0 0 14px rgba(79,195,247,0.7));
+      animation: ufoglow 1.2s ease-in-out infinite;
       display: block;
-      margin-bottom: 20px;
-      animation: orbit 8s linear infinite;
-      filter: drop-shadow(0 0 12px rgba(79,195,247,0.5));
     }
-
-    @keyframes orbit {
-      0% { transform: translateX(-4px) rotate(-3deg); }
-      25% { transform: translateX(0px) rotate(0deg); }
-      50% { transform: translateX(4px) rotate(3deg); }
-      75% { transform: translateX(0px) rotate(0deg); }
-      100% { transform: translateX(-4px) rotate(-3deg); }
+    @keyframes ufoglow {
+      0%, 100% { filter: drop-shadow(0 0 6px rgba(79,195,247,1)) drop-shadow(0 0 14px rgba(79,195,247,0.6)); }
+      50% { filter: drop-shadow(0 0 12px rgba(79,195,247,1)) drop-shadow(0 0 24px rgba(79,195,247,1)) drop-shadow(0 0 36px rgba(105,240,174,0.5)); }
     }
-
-    .coords {
+    .coords-row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 20px;
       display: flex;
-      justify-content: center;
-      gap: 24px;
-      margin-bottom: 16px;
+      justify-content: space-between;
+      align-items: center;
     }
-
-    .coord-item {
-      text-align: center;
-    }
-
+    .coord-item { text-align: center; }
     .coord-label {
       font-family: 'Share Tech Mono', monospace;
       font-size: 9px;
@@ -169,42 +146,29 @@
       text-transform: uppercase;
       margin-bottom: 4px;
     }
-
     .coord-value {
       font-family: 'Share Tech Mono', monospace;
-      font-size: 22px;
+      font-size: 18px;
       color: var(--accent);
       letter-spacing: 0.05em;
-      transition: all 0.3s ease;
     }
-
-    .coord-unit {
-      font-size: 11px;
-      color: var(--muted);
-    }
-
-    .region {
+    .region-center {
+      text-align: center;
       font-family: 'Share Tech Mono', monospace;
       font-size: 11px;
       color: var(--muted);
-      letter-spacing: 0.1em;
-      min-height: 16px;
     }
-
-    /* Stats grid */
     .stats-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 12px;
     }
-
     .stat-tile {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 16px;
       padding: 16px;
     }
-
     .stat-label {
       font-family: 'Share Tech Mono', monospace;
       font-size: 9px;
@@ -213,40 +177,31 @@
       color: var(--muted);
       margin-bottom: 8px;
     }
-
     .stat-value {
       font-family: 'Share Tech Mono', monospace;
       font-size: 20px;
       color: var(--text);
       letter-spacing: 0.05em;
     }
-
-    .stat-value.highlight {
-      color: var(--green);
-    }
-
+    .stat-value.highlight { color: var(--green); }
     .stat-sub {
       font-size: 10px;
       color: var(--muted);
       margin-top: 2px;
       font-family: 'Share Tech Mono', monospace;
     }
-
-    /* Astronauts */
     .astronaut-tile {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 16px;
       padding: 16px 20px;
     }
-
     .astronaut-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       margin-bottom: 12px;
     }
-
     .astronaut-label {
       font-family: 'Share Tech Mono', monospace;
       font-size: 9px;
@@ -254,19 +209,12 @@
       text-transform: uppercase;
       color: var(--muted);
     }
-
     .astronaut-count {
       font-family: 'Share Tech Mono', monospace;
       font-size: 14px;
       color: var(--accent);
     }
-
-    .astronaut-list {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
+    .astronaut-list { display: flex; flex-direction: column; gap: 6px; }
     .astronaut-item {
       font-family: 'Share Tech Mono', monospace;
       font-size: 11px;
@@ -275,84 +223,54 @@
       align-items: center;
       gap: 8px;
     }
-
-    .astronaut-item::before {
-      content: '›';
-      color: var(--accent);
-      font-size: 14px;
-    }
-
-    /* Footer */
+    .astronaut-item::before { content: '›'; color: var(--accent); font-size: 14px; }
     .footer {
       text-align: center;
       font-family: 'Share Tech Mono', monospace;
       font-size: 10px;
       color: rgba(255,255,255,0.15);
       letter-spacing: 0.1em;
-      padding: 0 4px;
+      padding: 0 4px 8px;
     }
-
-    /* Loading state */
-    .loading {
-      animation: loadpulse 1.2s ease-in-out infinite;
-    }
-
+    .loading { animation: loadpulse 1.2s ease-in-out infinite; }
     @keyframes loadpulse {
       0%, 100% { opacity: 0.3; }
       50% { opacity: 0.8; }
     }
-
-    /* Fade in */
-    .fade-in {
-      animation: fadeIn 0.6s ease forwards;
-    }
-
+    .fade-in { animation: fadeIn 0.6s ease forwards; }
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
-
-    /* Update flash */
-    .flash {
-      animation: flash 0.3s ease;
-    }
-
+    .flash { animation: flash 0.3s ease; }
     @keyframes flash {
-      0% { opacity: 1; }
-      50% { opacity: 0.4; }
-      100% { opacity: 1; }
+      0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; }
     }
   </style>
 </head>
 <body>
-
 <div class="wrapper">
-
   <div class="header fade-in">
     <div class="title">ISS · Tracker</div>
-    <div class="live-badge">
-      <div class="live-dot"></div>
-      LIVE
+    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+  </div>
+
+  <div class="map-card fade-in">
+    <div id="map"></div>
+  </div>
+
+  <div class="coords-row fade-in">
+    <div class="coord-item">
+      <div class="coord-label">Breitengrad</div>
+      <div class="coord-value loading" id="lat">···</div>
+    </div>
+    <div class="region-center loading" id="region">···</div>
+    <div class="coord-item">
+      <div class="coord-label">Längengrad</div>
+      <div class="coord-value loading" id="lng">···</div>
     </div>
   </div>
 
-  <!-- Main ISS card -->
-  <div class="iss-card fade-in">
-    <span class="iss-icon">🛸</span>
-    <div class="coords">
-      <div class="coord-item">
-        <div class="coord-label">Breitengrad</div>
-        <div class="coord-value loading" id="lat">···</div>
-      </div>
-      <div class="coord-item">
-        <div class="coord-label">Längengrad</div>
-        <div class="coord-value loading" id="lng">···</div>
-      </div>
-    </div>
-    <div class="region loading" id="region">Standort wird geladen…</div>
-  </div>
-
-  <!-- Stats -->
   <div class="stats-grid fade-in">
     <div class="stat-tile">
       <div class="stat-label">Geschwindigkeit</div>
@@ -371,13 +289,12 @@
     </div>
     <div class="stat-tile">
       <div class="stat-label">Aktualisiert</div>
-      <div class="stat-value" id="lastUpdate" style="font-size:16px;">···</div>
+      <div class="stat-value" id="lastUpdate" style="font-size:14px;">···</div>
       <div class="stat-sub">Uhr</div>
     </div>
   </div>
 
-  <!-- Astronauts -->
-  <div class="astronaut-tile fade-in" id="astronautTile">
+  <div class="astronaut-tile fade-in">
     <div class="astronaut-header">
       <div class="astronaut-label">Besatzung an Bord</div>
       <div class="astronaut-count" id="astronautCount">···</div>
@@ -387,55 +304,64 @@
     </div>
   </div>
 
-  <div class="footer fade-in">
-    DATEN: WHERETHEISS.AT · ISS POSITION API
-  </div>
-
+  <div class="footer fade-in">DATEN: WHERETHEISS.AT · ISS POSITION API</div>
 </div>
 
 <script>
-  let astronautsLoaded = false;
+  const map = L.map('map', {
+    zoomControl: false,
+    attributionControl: false,
+    dragging: false,
+    scrollWheelZoom: false,
+    doubleClickZoom: false,
+    touchZoom: false,
+  }).setView([0, 0], 1);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 5 }).addTo(map);
+
+  const ufoIcon = L.divIcon({
+    html: '<span class="ufo-marker">🛸</span>',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    className: ''
+  });
+
+  let marker = L.marker([0, 0], { icon: ufoIcon }).addTo(map);
 
   async function fetchISS() {
     try {
       const res = await fetch('https://api.wheretheiss.at/v1/satellites/25544');
       const data = await res.json();
-
       const lat = parseFloat(data.latitude).toFixed(2);
       const lng = parseFloat(data.longitude).toFixed(2);
+      const latN = parseFloat(lat);
+      const lngN = parseFloat(lng);
+
+      marker.setLatLng([latN, lngN]);
+      map.panTo([latN, lngN], { animate: true, duration: 0.8 });
 
       const latEl = document.getElementById('lat');
       const lngEl = document.getElementById('lng');
-
       latEl.textContent = lat + '°';
       lngEl.textContent = lng + '°';
       latEl.className = 'coord-value flash';
       lngEl.className = 'coord-value flash';
-      setTimeout(() => {
-        latEl.className = 'coord-value';
-        lngEl.className = 'coord-value';
-      }, 300);
+      setTimeout(() => { latEl.className = 'coord-value'; lngEl.className = 'coord-value'; }, 300);
 
-      // Region beschreiben
-      const latN = parseFloat(lat);
-      const lngN = parseFloat(lng);
       let region = '';
-      if (latN > 60) region = 'Arktis';
-      else if (latN < -60) region = 'Antarktis';
-      else if (lngN > -30 && lngN < 60) region = latN > 0 ? 'Europa / Afrika' : 'Afrika / Indischer Ozean';
-      else if (lngN >= 60 && lngN < 150) region = latN > 0 ? 'Asien' : 'Australien / Pazifik';
-      else region = latN > 0 ? 'Nordamerika / Atlantik' : 'Südamerika / Pazifik';
+      if (latN > 60) region = '🧊 Arktis';
+      else if (latN < -60) region = '🧊 Antarktis';
+      else if (lngN > -30 && lngN < 60) region = latN > 0 ? '🌍 Europa' : '🌍 Afrika';
+      else if (lngN >= 60 && lngN < 150) region = latN > 0 ? '🌏 Asien' : '🌏 Australien';
+      else region = latN > 0 ? '🌎 Nordamerika' : '🌎 Südamerika';
+      document.getElementById('region').textContent = region;
+      document.getElementById('region').className = 'region-center';
 
-      document.getElementById('region').textContent = '📍 ' + region;
-      document.getElementById('region').className = 'region';
-
-      // Uhrzeit
       const now = new Date();
       document.getElementById('lastUpdate').textContent =
         now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
     } catch (err) {
-      document.getElementById('region').textContent = 'Verbindungsfehler';
+      document.getElementById('region').textContent = 'Fehler';
     }
   }
 
@@ -443,12 +369,11 @@
     try {
       const res = await fetch('https://corquaid.github.io/international-space-station-APIs/JSON/people-in-space.json');
       const data = await res.json();
-      const issCreq = data.people.filter(p => p.craft === 'ISS');
-      document.getElementById('astronautCount').textContent = issCreq.length + ' Personen';
-
+      const crew = data.people.filter(p => p.craft === 'ISS');
+      document.getElementById('astronautCount').textContent = crew.length + ' Personen';
       const list = document.getElementById('astronautList');
       list.innerHTML = '';
-      issCreq.forEach(p => {
+      crew.forEach(p => {
         const div = document.createElement('div');
         div.className = 'astronaut-item';
         div.textContent = p.name;
@@ -459,14 +384,9 @@
     }
   }
 
-  // Start
   fetchISS();
   fetchAstronauts();
-
-  // ISS Position jede Sekunde
   setInterval(fetchISS, 1000);
-
-  // Astronauten nur alle 5 Minuten (ändert sich selten)
   setInterval(fetchAstronauts, 5 * 60 * 1000);
 </script>
 </body>
