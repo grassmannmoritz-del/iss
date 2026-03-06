@@ -8,8 +8,6 @@
   <meta name="apple-mobile-web-app-title" content="iss">
   <title>iss tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syne:wght@300;400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -108,25 +106,13 @@
       height: 1px;
       background: linear-gradient(90deg, transparent, var(--accent), transparent);
       opacity: 0.4;
-      z-index: 999;
+      z-index: 2;
+      pointer-events: none;
     }
-    #map {
-      height: 220px;
+    #mapCanvas {
       width: 100%;
-    }
-    .leaflet-tile-pane { filter: brightness(0.45) saturate(0.2) hue-rotate(200deg); }
-    .leaflet-container { background: #030508; }
-    .leaflet-control-zoom, .leaflet-control-attribution { display: none; }
-    .ufo-marker {
-      font-size: 18px;
-      line-height: 1;
-      filter: drop-shadow(0 0 6px rgba(79,195,247,1)) drop-shadow(0 0 14px rgba(79,195,247,0.7));
-      animation: ufoglow 1.2s ease-in-out infinite;
+      height: 220px;
       display: block;
-    }
-    @keyframes ufoglow {
-      0%, 100% { filter: drop-shadow(0 0 6px rgba(79,195,247,1)) drop-shadow(0 0 14px rgba(79,195,247,0.6)); }
-      50% { filter: drop-shadow(0 0 12px rgba(79,195,247,1)) drop-shadow(0 0 24px rgba(79,195,247,1)) drop-shadow(0 0 36px rgba(105,240,174,0.5)); }
     }
     .coords-row {
       background: var(--surface);
@@ -242,10 +228,6 @@
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    .flash { animation: flash 0.3s ease; }
-    @keyframes flash {
-      0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; }
-    }
   </style>
 </head>
 <body>
@@ -256,7 +238,7 @@
   </div>
 
   <div class="map-card fade-in">
-    <div id="map"></div>
+    <canvas id="mapCanvas"></canvas>
   </div>
 
   <div class="coords-row fade-in">
@@ -308,86 +290,157 @@
 </div>
 
 <script>
-  const map = L.map('map', {
-    zoomControl: false,
-    attributionControl: false,
-    dragging: false,
-    scrollWheelZoom: false,
-    doubleClickZoom: false,
-    touchZoom: false,
-  }).setView([0, 0], 1);
+const canvas = document.getElementById('mapCanvas');
+const ctx = canvas.getContext('2d');
+let issLat = 0, issLng = 0;
+let glowPhase = 0;
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 5 }).addTo(map);
+function resize() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * window.devicePixelRatio;
+  canvas.height = 220 * window.devicePixelRatio;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = '220px';
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+}
+resize();
+window.addEventListener('resize', () => { resize(); draw(); });
 
-  const ufoIcon = L.divIcon({
-    html: '<span class="ufo-marker">🛸</span>',
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    className: ''
+function latLngToXY(lat, lng, w, h) {
+  const x = (lng + 180) / 360 * w;
+  const y = (90 - lat) / 180 * h;
+  return [x, y];
+}
+
+const continents = [
+  [[70,-140],[70,-60],[25,-60],[15,-85],[30,-110],[60,-140]],
+  [[15,-80],[10,-60],[-55,-65],[-55,-70],[-20,-80],[0,-80]],
+  [[70,30],[70,10],[35,10],[35,30],[50,40],[60,30]],
+  [[35,10],[35,50],[-35,50],[-35,10],[0,10]],
+  [[70,30],[70,140],[10,140],[10,100],[30,60],[50,40],[60,30]],
+  [[-15,115],[-15,150],[-40,150],[-40,115]],
+  [[85,-70],[85,-20],[60,-20],[60,-50],[75,-70]],
+];
+
+function draw() {
+  const W = canvas.width / window.devicePixelRatio;
+  const H = canvas.height / window.devicePixelRatio;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#030c18';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = 'rgba(79,195,247,0.06)';
+  ctx.lineWidth = 0.5;
+  for (let lat = -90; lat <= 90; lat += 30) {
+    const [, y] = latLngToXY(lat, 0, W, H);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  for (let lng = -180; lng <= 180; lng += 30) {
+    const [x] = latLngToXY(0, lng, W, H);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(79,195,247,0.12)';
+  ctx.lineWidth = 1;
+  const [, eqY] = latLngToXY(0, 0, W, H);
+  ctx.beginPath(); ctx.moveTo(0, eqY); ctx.lineTo(W, eqY); ctx.stroke();
+
+  continents.forEach(poly => {
+    ctx.beginPath();
+    poly.forEach(([lat, lng], i) => {
+      const [x, y] = latLngToXY(lat, lng, W, H);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(79,195,247,0.12)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(79,195,247,0.25)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
   });
 
-  let marker = L.marker([0, 0], { icon: ufoIcon }).addTo(map);
+  const [issX, issY] = latLngToXY(issLat, issLng, W, H);
+  glowPhase += 0.05;
+  const pulse = 0.5 + 0.5 * Math.sin(glowPhase);
+  const ringR = 12 + pulse * 6;
+  ctx.beginPath();
+  ctx.arc(issX, issY, ringR, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(79,195,247,${0.15 + pulse * 0.15})`;
+  ctx.lineWidth = 1;
+  ctx.stroke();
 
-  async function fetchISS() {
-    try {
-      const res = await fetch('https://api.wheretheiss.at/v1/satellites/25544');
-      const data = await res.json();
-      const lat = parseFloat(data.latitude).toFixed(2);
-      const lng = parseFloat(data.longitude).toFixed(2);
-      const latN = parseFloat(lat);
-      const lngN = parseFloat(lng);
+  const grd = ctx.createRadialGradient(issX, issY, 0, issX, issY, 16);
+  grd.addColorStop(0, `rgba(79,195,247,${0.4 + pulse * 0.3})`);
+  grd.addColorStop(1, 'rgba(79,195,247,0)');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(issX, issY, 16, 0, Math.PI * 2);
+  ctx.fill();
 
-      marker.setLatLng([latN, lngN]);
-      map.panTo([latN, lngN], { animate: true, duration: 0.8 });
+  ctx.font = `${14 + pulse * 2}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🛸', issX, issY);
+}
 
-      const latEl = document.getElementById('lat');
-      const lngEl = document.getElementById('lng');
-      latEl.textContent = lat + '°';
-      lngEl.textContent = lng + '°';
-      latEl.className = 'coord-value flash';
-      lngEl.className = 'coord-value flash';
-      setTimeout(() => { latEl.className = 'coord-value'; lngEl.className = 'coord-value'; }, 300);
+function animate() {
+  draw();
+  requestAnimationFrame(animate);
+}
+animate();
 
-      let region = '';
-      if (latN > 60) region = '🧊 Arktis';
-      else if (latN < -60) region = '🧊 Antarktis';
-      else if (lngN > -30 && lngN < 60) region = latN > 0 ? '🌍 Europa' : '🌍 Afrika';
-      else if (lngN >= 60 && lngN < 150) region = latN > 0 ? '🌏 Asien' : '🌏 Australien';
-      else region = latN > 0 ? '🌎 Nordamerika' : '🌎 Südamerika';
-      document.getElementById('region').textContent = region;
-      document.getElementById('region').className = 'region-center';
+async function fetchISS() {
+  try {
+    const res = await fetch('https://api.wheretheiss.at/v1/satellites/25544');
+    const data = await res.json();
+    issLat = parseFloat(data.latitude);
+    issLng = parseFloat(data.longitude);
 
-      const now = new Date();
-      document.getElementById('lastUpdate').textContent =
-        now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    } catch (err) {
-      document.getElementById('region').textContent = 'Fehler';
-    }
+    document.getElementById('lat').textContent = issLat.toFixed(2) + '°';
+    document.getElementById('lng').textContent = issLng.toFixed(2) + '°';
+    document.getElementById('lat').className = 'coord-value';
+    document.getElementById('lng').className = 'coord-value';
+
+    let region = '';
+    if (issLat > 60) region = '🧊 Arktis';
+    else if (issLat < -60) region = '🧊 Antarktis';
+    else if (issLng > -30 && issLng < 60) region = issLat > 0 ? '🌍 Europa' : '🌍 Afrika';
+    else if (issLng >= 60 && issLng < 150) region = issLat > 0 ? '🌏 Asien' : '🌏 Australien';
+    else region = issLat > 0 ? '🌎 Nordamerika' : '🌎 Südamerika';
+    document.getElementById('region').textContent = region;
+    document.getElementById('region').className = 'region-center';
+
+    const now = new Date();
+    document.getElementById('lastUpdate').textContent =
+      now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch (err) {
+    document.getElementById('region').textContent = 'Fehler';
   }
+}
 
-  async function fetchAstronauts() {
-    try {
-      const res = await fetch('https://corquaid.github.io/international-space-station-APIs/JSON/people-in-space.json');
-      const data = await res.json();
-      const crew = data.people.filter(p => p.craft === 'ISS');
-      document.getElementById('astronautCount').textContent = crew.length + ' Personen';
-      const list = document.getElementById('astronautList');
-      list.innerHTML = '';
-      crew.forEach(p => {
-        const div = document.createElement('div');
-        div.className = 'astronaut-item';
-        div.textContent = p.name;
-        list.appendChild(div);
-      });
-    } catch (err) {
-      document.getElementById('astronautCount').textContent = '–';
-    }
+async function fetchAstronauts() {
+  try {
+    const res = await fetch('https://corquaid.github.io/international-space-station-APIs/JSON/people-in-space.json');
+    const data = await res.json();
+    const crew = data.people.filter(p => p.craft === 'ISS');
+    document.getElementById('astronautCount').textContent = crew.length + ' Personen';
+    const list = document.getElementById('astronautList');
+    list.innerHTML = '';
+    crew.forEach(p => {
+      const div = document.createElement('div');
+      div.className = 'astronaut-item';
+      div.textContent = p.name;
+      list.appendChild(div);
+    });
+  } catch (err) {
+    document.getElementById('astronautCount').textContent = '–';
   }
+}
 
-  fetchISS();
-  fetchAstronauts();
-  setInterval(fetchISS, 1000);
-  setInterval(fetchAstronauts, 5 * 60 * 1000);
+fetchISS();
+fetchAstronauts();
+setInterval(fetchISS, 1000);
+setInterval(fetchAstronauts, 5 * 60 * 1000);
 </script>
 </body>
 </html>
